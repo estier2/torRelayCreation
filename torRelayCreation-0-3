@@ -1,0 +1,104 @@
+#!/bin/bash
+
+echo "It is recommended to update your installed packages first, else you might end up running an outdated version of Tor. Do you want to update [y/n]?"
+read updatePackages
+
+if [$updatePackages == "y"]
+then
+	apt update && apt upgrade
+
+else 
+	echo "Skipping updates."
+	
+fi
+
+clear
+
+#Enable Automatic Software Updates
+
+#Install the required Packages
+apt-get install unattended-upgrades apt-listchanges
+
+#Edit the configuration file
+
+cat << EOF > /etc/apt/apt.conf.d/50unattended-upgrades
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+    "TorProject:${distro_codename}";
+};
+Unattended-Upgrade::Package-Blacklist {
+};
+EOF
+
+
+cat << EOF > /etc/apt/apt.conf.d/20auto-upgrades
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::AutocleanInterval "5";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::Verbose "1";
+EOF
+
+
+
+#Configure Tor Project's Repository
+apt install apt-transport-https
+
+#archVar=$(dpkg --print-architecture)
+
+lsbVar=$(lsb_release -c)
+lsbVar=${lsbVar//Codename/}
+lsbVar=${lsbVar//:/}
+
+cat << EOF > /etc/apt/sources.list.d/tor.list
+deb     [signed-by=/usr/share/keyrings/tor-archive-keyring.gpg] https://deb.torproject.org/torproject.org $lsbVar main
+deb-src [signed-by=/usr/share/keyrings/tor-archive-keyring.gpg] https://deb.torproject.org/torproject.org $lsbVar main
+EOF
+
+
+wget -qO- https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc | gpg --dearmor | tee /usr/share/keyrings/tor-archive-keyring.gpg >/dev/null
+
+apt update
+apt install tor deb.torproject.org-keyring
+
+#Package Installation
+apt update
+apt install tor
+
+clear
+
+echo "Please choose a Nickname for your Relay: "
+read  nicknameVar
+
+echo "Please enter your contact e-mail (This will be published publicly. You can enter a fantasy e-mail as well.): "
+read contactInfoVar
+
+echo "Please choose a port for your relay (Default is 443): "
+read orPortVar
+
+if [[ $orPortVar == ?(-)+([0-9]) ]]
+then 
+	echo orPort is set to port $orPortVar
+else
+	orPortVar=443
+	echo orPort is set to default port
+fi
+
+cat << EOF > /etc/tor/torrc
+
+Nickname	$nicknameVar
+ContactInfo	$contactInfoVar
+ORPort		$orPortVar
+ExitRelay	0
+SocksPort	0
+EOF
+
+systemctl restart tor@default
+
+
+clear
+
+echo "Your Tor relay has been successfully installed. You can find it by searching for the name here: https://metrics.torproject.org/rs.html#search . It might take a few hours for your Relay to show up in the list."
+echo "You can edit the relay settings under /etc/tor/torrc/"
+
+echo "Thank you! :)"
+
